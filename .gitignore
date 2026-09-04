@@ -1,1 +1,9 @@
-./adb_ex/
+adb_ex/
+node_modules/
+dist/
+release/
+.DS_Store
+*.log
+.vite/
+coverage/
+*.tsbuildinfo

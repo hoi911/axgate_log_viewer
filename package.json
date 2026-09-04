@@ -1,0 +1,124 @@
+{
+  "name": "axgate-log-viewer",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Axgate firewall ADB/CSV log viewer",
+  "author": "axgate-log-viewer",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --pretty false",
+    "electron": "electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --arm64 --publish never && npm run dist:win",
+    "dist:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --arm64 --publish never",
+    "dist:win": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis portable zip --x64 --publish never && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis zip --arm64 --publish never"
+  },
+  "devDependencies": {
+    "@fontsource/noto-sans-kr": "^5.2.5",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@types/sql.js": "^1.4.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "concurrently": "^9.2.1",
+    "electron": "^37.4.0",
+    "electron-builder": "^26.0.12",
+    "jsdom": "^26.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "sql.js": "^1.13.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "dev.axgate.logviewer",
+    "productName": "AXGATE 로그 뷰어",
+    "copyright": "Copyright © AXGATE Log Viewer",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "!**/node_modules/**"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "npmRebuild": false,
+    "electronLanguages": [
+      "en-US",
+      "ko"
+    ],
+    "compression": "maximum",
+    "afterPack": "scripts/afterPack.cjs",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "identity": "-",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "AXGATE-Log-Viewer-${version}-mac-${arch}.${ext}"
+    },
+    "win": {
+      "executableName": "AXGATE-Log-Viewer",
+      "signAndEditExecutable": false,
+      "artifactName": "AXGATE-Log-Viewer-${version}-win-${arch}.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AXGATE 로그 뷰어",
+      "uninstallDisplayName": "AXGATE 로그 뷰어",
+      "unicode": true,
+      "warningsAsErrors": false,
+      "include": "installer.nsh",
+      "artifactName": "AXGATE-Log-Viewer-Setup-${version}-win-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "AXGATE-Log-Viewer-${version}-portable-win-${arch}.${ext}"
+    },
+    "dmg": {
+      "artifactName": "AXGATE-Log-Viewer-${version}-mac-${arch}.${ext}"
+    }
+  }
+}
