@@ -1,4 +1,5 @@
 adb_ex/
+PLAN*
 node_modules/
 dist/
 release/

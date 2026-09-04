@@ -17,8 +17,6 @@ AXGATE 장비는 로그를 `audit`/`ipsec`/`session`/`ssl`/`system`/`uauth` 6종
 - **부가 UI**: 시간대별 로그량 막대그래프, 컬럼/필터 용어 설명 툴팁, 하단 상태줄, 라이트/다크/OS 테마, CSV 내보내기(UTF-8 BOM / UTF-16LE).
 - **원본 보호**: `.adb`는 메모리에서만 읽어(sql.js) 원본 폴더에 `-wal`/`-shm` 등 부산물을 만들지 않으며, 앱은 외부로 데이터를 전송하지 않는 완전 오프라인 동작을 원칙으로 함.
 
-기능별 세부 설계 배경은 [`PLAN.md`](./PLAN.md)(구조 분석·UI 설계)와 [`PLAN2.md`](./PLAN2.md)(검색·필터 설계, 추가 기능 제안 및 구현 방안)에 정리돼 있습니다.
-
 ## 기술 스택
 
 - UI: React 19 + TypeScript + Vite, 한글 폰트 [Noto Sans KR](https://fonts.google.com/noto/specimen/Noto+Sans+KR)
@@ -62,8 +60,6 @@ adb_ex/         로컬 테스트용 샘플 .adb/.csv (git에는 포함되지 않
 
 ## 문서
 
-- [`PLAN.md`](./PLAN.md) — 배경/목적, `.adb`·CSV 구조 분석, UI/UX 설계, CSV 자동 판별 설계
-- [`PLAN2.md`](./PLAN2.md) — 검색·필터 상세 설계, 추가 제안 기능과 구현 방안, 미결 사항 처리 방침
 - [`RELEASE_NOTES.md`](./RELEASE_NOTES.md) — 버전별 포함 기능, 검증 결과, 알려진 제한, 다음 후보
 
 ## 알려진 제한
