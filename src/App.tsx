@@ -534,7 +534,7 @@ export function App() {
                 <button
                   key={t}
                   className={`side-item ${activeType === t && !groupedView ? "active" : ""} ${counts[t] === 0 ? "zero" : ""}`}
-                  title={LOG_TYPE_LABELS[t]}
+                  title={`${LOG_TYPE_LABELS[t]} ${counts[t].toLocaleString()}건`}
                   onClick={() => {
                     setActiveType(t);
                     setSearchMode(debouncedSearch ? "typed" : "off");
@@ -550,6 +550,7 @@ export function App() {
               {counts.unknown > 0 && (
                 <button
                   className={`side-item ${activeType === "unknown" && !groupedView ? "active" : ""}`}
+                  title={`알 수 없음 ${counts.unknown.toLocaleString()}건`}
                   onClick={() => {
                     setActiveType("unknown");
                     setSearchMode(debouncedSearch ? "typed" : "off");
@@ -569,7 +570,7 @@ export function App() {
                 style={{ width: "100%" }}
                 onClick={() => setSettings((s) => ({ ...s, sidebarCollapsed: !s.sidebarCollapsed }))}
               >
-                {sidebarCollapsed ? "펼치기" : "사이드바 접기"}
+                {sidebarCollapsed ? "열기" : "접기"}
               </button>
             </div>
           </aside>
@@ -738,36 +739,33 @@ export function App() {
                   return (
                     <div className="kv" key={key}>
                       <span title={glossaryFor(DETAIL_LABELS[key] ?? key)}>{DETAIL_LABELS[key] ?? key}</span>
-                      <b>
+                      <div className="kv-value">
                         <Highlight text={value} query={debouncedSearch} />
-                        <button
-                          type="button"
-                          className="copy-btn"
-                          title="복사"
-                          onClick={() => void copyValue(value, key)}
-                        >
-                          {copied === key ? "복사됨" : "복사"}
-                        </button>
-                      </b>
+                      </div>
+                      <button
+                        type="button"
+                        className="copy-btn"
+                        title="복사"
+                        onClick={() => void copyValue(value, key)}
+                      >
+                        {copied === key ? "됨" : "복사"}
+                      </button>
                     </div>
                   );
                 })}
                 {showRaw && rawFields && (
                   <>
-                    <div className="kv"><span>원시 JSON</span><b /></div>
                     {Object.entries(rawFields).map(([k, v]) => (
                       <div className="kv" key={k}>
                         <span>{k}</span>
-                        <b>
-                          {String(v)}
-                          <button
-                            type="button"
-                            className="copy-btn"
-                            onClick={() => void copyValue(String(v), `raw-${k}`)}
-                          >
-                            {copied === `raw-${k}` ? "복사됨" : "복사"}
-                          </button>
-                        </b>
+                        <div className="kv-value">{String(v)}</div>
+                        <button
+                          type="button"
+                          className="copy-btn"
+                          onClick={() => void copyValue(String(v), `raw-${k}`)}
+                        >
+                          {copied === `raw-${k}` ? "됨" : "복사"}
+                        </button>
                       </div>
                     ))}
                   </>

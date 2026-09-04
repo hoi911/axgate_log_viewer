@@ -1,6 +1,6 @@
 # AXGATE 로그 뷰어 Release Notes
 
-버전: **0.1.3** (최신) / 0.1.2 / 0.1.1 / 0.1.0  
+버전: **0.1.4** (최신) / 0.1.3 / 0.1.2 / 0.1.1 / 0.1.0  
 날짜: **2026-09-04**
 
 이 문서는 `PLAN.md` 1차 구현, `PLAN2.md` 검색·필터, 설치/포터블 패키징, `PLAN3.md` 개선까지 정리한다.
@@ -15,19 +15,19 @@ Axgate 방화벽 `.adb`(SQLite) 백업과 장비 UI `.csv` 내보내기를 같�
 
 ## 설치 파일
 
-0.1.3 산출물은 `release/`에 있다. Windows는 CPU에 맞는 파일을 고른다.
+0.1.4 산출물은 `release/`에 있다. Windows는 CPU에 맞는 파일을 고른다.
 
 - Intel/AMD PC → `win-x64`
 - Snapdragon 등 ARM PC → `win-arm64` (**포터블은 zip만 사용**. ARM용 NSIS portable exe는 실행되지 않음)
 
 | 파일 | 용도 | 크기 |
 |---|---|---|
-| `AXGATE-Log-Viewer-Setup-0.1.3-win-x64.exe` | Windows 설치 프로그램 (Intel/AMD 64비트) | 75MB |
-| `AXGATE-Log-Viewer-0.1.3-portable-win-x64.exe` | Windows 단일 실행 포터블 (x64) | 74MB |
-| `AXGATE-Log-Viewer-0.1.3-win-x64.zip` | Windows 폴더 포터블 x64 (`AXGATE-Log-Viewer.exe`) | 103MB |
-| `AXGATE-Log-Viewer-Setup-0.1.3-win-arm64.exe` | Windows 설치 프로그램 (ARM64) | 67MB |
-| `AXGATE-Log-Viewer-0.1.3-win-arm64.zip` | Windows ARM 포터블 (zip 해제 후 `AXGATE-Log-Viewer.exe`) | 96MB |
-| `AXGATE-Log-Viewer-0.1.3-mac-arm64.dmg` | macOS 설치 (Apple Silicon) | 86MB |
+| `AXGATE-Log-Viewer-Setup-0.1.4-win-x64.exe` | Windows 설치 프로그램 (Intel/AMD 64비트) | 75MB |
+| `AXGATE-Log-Viewer-0.1.4-portable-win-x64.exe` | Windows 단일 실행 포터블 (x64) | 74MB |
+| `AXGATE-Log-Viewer-0.1.4-win-x64.zip` | Windows 폴더 포터블 x64 (`AXGATE-Log-Viewer.exe`) | 103MB |
+| `AXGATE-Log-Viewer-Setup-0.1.4-win-arm64.exe` | Windows 설치 프로그램 (ARM64) | 67MB |
+| `AXGATE-Log-Viewer-0.1.4-win-arm64.zip` | Windows ARM 포터블 (zip 해제 후 `AXGATE-Log-Viewer.exe`) | 96MB |
+| `AXGATE-Log-Viewer-0.1.4-mac-arm64.dmg` | macOS 설치 (Apple Silicon) | 86MB |
 
 Windows에서:
 
@@ -261,6 +261,15 @@ ARM PC 포터블은 zip만 쓴다 (`AXGATE-Log-Viewer-0.1.2-win-arm64.zip`).
 
 - `build/installer.nsh`, `package.json` (0.1.2), `scripts/afterPack.cjs`
 
+## 0.1.4 — UI 다듬기
+
+0.1.3과 기능은 같고, 글자가 칸 밖으로 나가던 레이아웃만 고쳤다.
+
+- 접힌 사이드바에서 건수·버튼 문구가 잘리던 문제
+- 상세 패널 긴 메시지와 `복사` 버튼이 세로로 쪼개지던 문제
+- 한국어 Windows 날짜 입력 자리표시가 잘리던 문제
+- 상태줄·검색창 말줄임
+
 ## 0.1.3 — PLAN3 반영
 
 코드 리뷰(`PLAN3.md` 2절)와 바로 넣을 수 있는 기능(3·4절)을 반영했다. 인증서·디스크 캐시·상관 보기처럼 결정이 남은 항목은 넣지 않았다.
@@ -295,6 +304,7 @@ ARM PC 포터블은 zip만 쓴다 (`AXGATE-Log-Viewer-0.1.2-win-arm64.zip`).
 - Electron **37 → 38** (macOS 27에서 37대가 기동 직후 SIGTRAP으로 죽던 문제 대응)
 - `.adb` 더블클릭이 화면보다 먼저 오면 이벤트를 놓치던 문제: 렌더러가 준비된 뒤에만 파일을 넘김
 - 폴더에 파일이 많을 때 확인 창 기본값을 “가져오기”로 (200개 초과로 잘린 경우만 기본 취소)
+- UI: 접힌 사이드바·상세 복사 버튼·날짜 입력·긴 메시지 줄바꿈이 칸 밖으로 삐져나오던 문제 수정
 
 ### 이 버전에 넣지 않은 PLAN3 항목
 

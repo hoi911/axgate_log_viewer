@@ -240,7 +240,7 @@ export const DETAIL_LABELS: Record<string, string> = {
   spi: "SPI",
   vpn_type: "VPN 유형",
   prof_id: "프로파일 ID",
-  facility: "facility",
+  facility: "Facility",
   pid: "PID",
   uid: "사용자",
   preview: "미리보기",

@@ -112,6 +112,7 @@ function FilterControlView({
       <>
         <label title={glossaryFor("시작")}>시작
           <input
+            className="dt"
             type="datetime-local"
             value={epochToDatetimeLocal(filters.fromEpoch)}
             onChange={(e) => onChange({ ...filters, fromEpoch: datetimeLocalToEpoch(e.target.value) })}
@@ -119,6 +120,7 @@ function FilterControlView({
         </label>
         <label title={glossaryFor("종료")}>종료
           <input
+            className="dt"
             type="datetime-local"
             value={epochToDatetimeLocal(filters.toEpoch)}
             onChange={(e) => onChange({ ...filters, toEpoch: datetimeLocalToEpoch(e.target.value, true) })}
