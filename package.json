@@ -1,6 +1,6 @@
 {
   "name": "axgate-log-viewer",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Axgate firewall ADB/CSV log viewer",
   "author": "axgate-log-viewer",
@@ -26,7 +26,7 @@
     "@types/sql.js": "^1.4.9",
     "@vitejs/plugin-react": "^5.0.2",
     "concurrently": "^9.2.1",
-    "electron": "^37.4.0",
+    "electron": "^38.8.6",
     "electron-builder": "^26.0.12",
     "jsdom": "^26.1.0",
     "react": "^19.1.1",
@@ -51,6 +51,14 @@
     },
     "asar": true,
     "npmRebuild": false,
+    "fileAssociations": [
+      {
+        "ext": "adb",
+        "name": "AXGATE Log",
+        "description": "AXGATE 방화벽 로그",
+        "role": "Viewer"
+      }
+    ],
     "electronLanguages": [
       "en-US",
       "ko"
@@ -120,5 +128,10 @@
     "dmg": {
       "artifactName": "AXGATE-Log-Viewer-${version}-mac-${arch}.${ext}"
     }
+  },
+  "allowScripts": {
+    "electron@38.8.6": true,
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true
   }
 }

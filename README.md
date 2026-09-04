@@ -2,7 +2,7 @@
 
 AXGATE 방화벽이 `.adb`(SQLite) 형식으로 백업하는 로그를, SQLite에 익숙하지 않은 일반 사용자도 macOS/Windows에서 동일한 화면으로 조회·검색·필터할 수 있게 해주는 데스크탑(웹) 뷰어입니다.
 
-> **상태**: v0.1.2. 설치 파일은 `release/` (`RELEASE_NOTES.md` 참고). ARM Windows 포터블은 zip만 사용.
+> **상태**: v0.1.3. 설치 파일은 `release/` (`RELEASE_NOTES.md` 참고). ARM Windows 포터블은 zip만 사용.
 
 ## 왜 필요한가
 

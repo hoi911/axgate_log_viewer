@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ColumnPicker } from "./components/ColumnPicker";
 import { FilterBar } from "./components/FilterBar";
 import { Highlight } from "./components/Highlight";
 import { SearchResults } from "./components/SearchResults";
@@ -10,18 +11,20 @@ import { buildCsv, defaultExportName } from "./lib/exportCsv";
 import { hasActiveFilters } from "./lib/filters";
 import { glossaryFor } from "./lib/glossary";
 import { listValue, type CanonicalRow } from "./lib/ingest";
-import { DETAIL_LABELS, LOG_TYPE_LABELS, presetFor } from "./lib/mappings";
+import { DETAIL_LABELS, LOG_TYPE_LABELS, columnsFor } from "./lib/mappings";
 import { loadSettings, resolveTheme, saveSettings } from "./lib/settings";
 import type {
   ClassifiedFile,
   ExportEncoding,
+  FilterPreset,
   LogType,
   LogTypeOrUnknown,
   OpenedFile,
   QueryFilters,
+  RecentWorkspace,
   Settings,
 } from "./lib/types";
-import { LOG_TYPES } from "./lib/types";
+import { DEFAULT_SETTINGS, LOG_TYPES } from "./lib/types";
 import { Workspace, emptyCounts } from "./lib/workspace";
 
 type Screen = "start" | "preview" | "workspace";
@@ -59,15 +62,21 @@ async function saveBytes(name: string, data: Uint8Array): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+function columnFiltersOnly(filters: QueryFilters): QueryFilters {
+  const { keyword: _k, exact: _e, ...rest } = filters;
+  return rest;
+}
+
 export function App() {
   const [settings, setSettings] = useState<Settings>(() =>
-    typeof window === "undefined" ? { theme: "system", density: "comfortable", pageSize: 100 } : loadSettings(),
+    typeof window === "undefined" ? { ...DEFAULT_SETTINGS } : loadSettings(),
   );
   const theme = resolveTheme(settings.theme);
   const [screen, setScreen] = useState<Screen>("start");
   const [pending, setPending] = useState<ClassifiedFile[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [activeType, setActiveType] = useState<LogTypeOrUnknown>("session");
   const [filters, setFilters] = useState<QueryFilters>({});
@@ -83,9 +92,11 @@ export function App() {
   const [exportEnc, setExportEnc] = useState<ExportEncoding>("utf-8-bom");
   const [dragging, setDragging] = useState(false);
   const [forceType, setForceType] = useState<LogTypeOrUnknown | "">("");
+  const [recents, setRecents] = useState<RecentWorkspace[]>([]);
   const folderInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const counts = useMemo(() => workspace?.counts() ?? emptyCounts(), [workspace]);
   const stats = useMemo(() => workspace?.stats() ?? { files: 0, rows: 0, bytes: 0 }, [workspace]);
@@ -109,6 +120,14 @@ export function App() {
   const unfiltered = counts[activeType] ?? 0;
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const visibleRows = rows;
+  const visibleCols = useMemo(() => {
+    const type = activeType === "unknown" ? "unknown" : activeType;
+    const hidden = type === "unknown" ? [] : (settings.hiddenColumns[type] ?? []);
+    const extra = type === "unknown" ? [] : (settings.extraColumns[type] ?? []);
+    return columnsFor(type, hidden, extra);
+  }, [activeType, settings.hiddenColumns, settings.extraColumns]);
+  const currentPresets: FilterPreset[] =
+    activeType === "unknown" ? [] : (settings.filterPresets[activeType] ?? []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -148,6 +167,11 @@ export function App() {
     setSelected(null);
   }, [debouncedSearch, searchMode]);
 
+  useEffect(() => {
+    if (!window.axgate?.listRecent) return;
+    void window.axgate.listRecent().then(setRecents).catch(() => setRecents([]));
+  }, [screen]);
+
   const classifyAll = useCallback(async (opened: OpenedFile[], forced?: LogTypeOrUnknown | "") => {
     const files = await normalizeOpened(opened);
     const classified = files.map((file) => {
@@ -167,6 +191,15 @@ export function App() {
     setPending(classified);
     setScreen("preview");
   }, []);
+
+  useEffect(() => {
+    if (!window.axgate?.onOpenFiles) return;
+    const stop = window.axgate.onOpenFiles((files) => {
+      void classifyAll(files as OpenedFile[], forceType);
+    });
+    void window.axgate.rendererReady?.();
+    return stop;
+  }, [classifyAll, forceType]);
 
   const onPickBrowserFiles = async (list: FileList | null, folder = false) => {
     if (!list || list.length === 0) return;
@@ -194,6 +227,17 @@ export function App() {
     fileInput.current?.click();
   };
 
+  const openRecent = async (dir: string) => {
+    if (!window.axgate?.openRecent) return;
+    const result = await window.axgate.openRecent(dir);
+    if (!result || result.missing) {
+      setError("폴더를 찾을 수 없습니다. 목록에서 빠졌을 수 있습니다.");
+      void window.axgate.listRecent().then(setRecents);
+      return;
+    }
+    await classifyAll((result.files ?? []) as OpenedFile[], forceType);
+  };
+
   const loadDevSamples = async () => {
     const names = [
       "session.2026.09.04.00000.01.adb",
@@ -219,15 +263,22 @@ export function App() {
   };
 
   const confirmImport = async () => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
     setBusy("파일을 읽고 있습니다…");
+    let ws: Workspace | null = null;
     try {
       workspace?.close();
-      const ws = await Workspace.create();
+      ws = await Workspace.create();
       for (let i = 0; i < pending.length; i += 1) {
+        if (ac.signal.aborted) throw Object.assign(new Error("가져오기가 취소되었습니다."), { name: "AbortError" });
         const file = pending[i]!;
         setBusy(`${i + 1}/${pending.length} ${file.name}`);
-        await ws.ingest(file);
-        file.bytes = new Uint8Array();
+        await ws.ingest(file, {
+          signal: ac.signal,
+          onBatch: (n) => setBusy(`${i + 1}/${pending.length} ${file.name} · ${n.toLocaleString()}행`),
+        });
         await new Promise((r) => setTimeout(r, 0));
       }
       setPending([]);
@@ -244,13 +295,21 @@ export function App() {
       setSearchMode("off");
       setScreen("workspace");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      ws?.close();
+      if (err instanceof Error && err.name === "AbortError") {
+        setError("가져오기를 취소했습니다.");
+        setScreen("preview");
+      } else {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setBusy(null);
+      abortRef.current = null;
     }
   };
 
   const resetToStart = () => {
+    abortRef.current?.abort();
     workspace?.close();
     setWorkspace(null);
     setPending([]);
@@ -266,6 +325,16 @@ export function App() {
     const dataRows = workspace.exportRows(activeType, queryFilters);
     const bytes = buildCsv(activeType, dataRows, exportEnc);
     await saveBytes(defaultExportName(activeType), bytes);
+  };
+
+  const copyValue = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      window.setTimeout(() => setCopied((cur) => (cur === key ? null : cur)), 1200);
+    } catch {
+      setError("클립보드에 복사하지 못했습니다.");
+    }
   };
 
   useEffect(() => {
@@ -295,6 +364,7 @@ export function App() {
 
   const platform = window.axgate?.platform ?? (navigator.platform.startsWith("Mac") ? "darwin" : "browser");
   const traffic = platform === "darwin" && isElectron();
+  const sidebarCollapsed = settings.sidebarCollapsed;
 
   return (
     <div className="app">
@@ -383,6 +453,21 @@ export function App() {
               </select>
             </div>
             <div className="hint">드래그 앤 드롭도 지원합니다. 원본 파일은 읽기만 하며, 로그는 이 기기를 벗어나지 않습니다.</div>
+            {isElectron() && recents.length > 0 && (
+              <div className="recent-block">
+                <h3>최근 폴더</h3>
+                <ul className="recent-list">
+                  {recents.map((item) => (
+                    <li key={item.dir}>
+                      <button type="button" onClick={() => void openRecent(item.dir)}>
+                        <b>{item.name}</b>
+                        <span>{item.dir}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {error && <p className="error">{error}</p>}
           </div>
         </div>
@@ -442,13 +527,14 @@ export function App() {
       )}
 
       {screen === "workspace" && workspace && (
-        <div className={`workspace ${selected ? "with-detail" : ""}`}>
+        <div className={`workspace ${selected ? "with-detail" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
           <aside className="sidebar">
             <div className="side-list">
               {LOG_TYPES.map((t) => (
                 <button
                   key={t}
                   className={`side-item ${activeType === t && !groupedView ? "active" : ""} ${counts[t] === 0 ? "zero" : ""}`}
+                  title={LOG_TYPE_LABELS[t]}
                   onClick={() => {
                     setActiveType(t);
                     setSearchMode(debouncedSearch ? "typed" : "off");
@@ -457,7 +543,7 @@ export function App() {
                     setFilters(debouncedSearch ? { keyword: debouncedSearch, exact: exactMatch } : {});
                   }}
                 >
-                  <span>{LOG_TYPE_LABELS[t]}</span>
+                  <span className="side-label">{LOG_TYPE_LABELS[t]}</span>
                   <span className="count">{counts[t].toLocaleString()}</span>
                 </button>
               ))}
@@ -472,13 +558,19 @@ export function App() {
                     setFilters(debouncedSearch ? { keyword: debouncedSearch, exact: exactMatch } : {});
                   }}
                 >
-                  <span>알 수 없음</span>
+                  <span className="side-label">알 수 없음</span>
                   <span className="count">{counts.unknown.toLocaleString()}</span>
                 </button>
               )}
             </div>
             <div className="side-foot">
-              <button className="btn" style={{ width: "100%" }} onClick={() => setSettingsOpen(true)}>설정</button>
+              <button
+                className="btn"
+                style={{ width: "100%" }}
+                onClick={() => setSettings((s) => ({ ...s, sidebarCollapsed: !s.sidebarCollapsed }))}
+              >
+                {sidebarCollapsed ? "펼치기" : "사이드바 접기"}
+              </button>
             </div>
           </aside>
           <section className="main">
@@ -502,20 +594,54 @@ export function App() {
               </div>
             ) : (
               <>
-                <FilterBar
-                  logType={activeType}
-                  filters={queryFilters}
-                  options={(column) => workspace.distinct(activeType, column)}
-                  onChange={(next) => {
-                    setFilters(next);
-                    setPage(1);
-                    if (!next.keyword) {
-                      setSearch("");
-                      setDebouncedSearch("");
-                      setSearchMode("off");
-                    }
-                  }}
-                />
+                <div className="filter-row">
+                  <FilterBar
+                    logType={activeType}
+                    filters={queryFilters}
+                    options={(column) => workspace.distinct(activeType, column)}
+                    onChange={(next) => {
+                      setFilters(next);
+                      setPage(1);
+                      if (!next.keyword) {
+                        setSearch("");
+                        setDebouncedSearch("");
+                        setSearchMode("off");
+                      }
+                    }}
+                    presets={currentPresets}
+                    onSavePreset={(name) => {
+                      if (activeType === "unknown") return;
+                      const stored = columnFiltersOnly(queryFilters);
+                      setSettings((s) => {
+                        const list = [...(s.filterPresets[activeType] ?? [])].filter((p) => p.name !== name);
+                        list.unshift({ name, filters: stored });
+                        return {
+                          ...s,
+                          filterPresets: { ...s.filterPresets, [activeType]: list.slice(0, 20) },
+                        };
+                      });
+                    }}
+                    onLoadPreset={(name) => {
+                      const found = currentPresets.find((p) => p.name === name);
+                      if (!found) return;
+                      setFilters({ ...found.filters, keyword: queryFilters.keyword, exact: queryFilters.exact });
+                      setPage(1);
+                    }}
+                  />
+                  <ColumnPicker
+                    logType={activeType}
+                    hidden={activeType === "unknown" ? [] : (settings.hiddenColumns[activeType] ?? [])}
+                    extra={activeType === "unknown" ? [] : (settings.extraColumns[activeType] ?? [])}
+                    onChange={(hidden, extra) => {
+                      if (activeType === "unknown") return;
+                      setSettings((s) => ({
+                        ...s,
+                        hiddenColumns: { ...s.hiddenColumns, [activeType]: hidden },
+                        extraColumns: { ...s.extraColumns, [activeType]: extra },
+                      }));
+                    }}
+                  />
+                </div>
                 <Timeline
                   workspace={workspace}
                   logType={activeType}
@@ -539,7 +665,7 @@ export function App() {
                     <table className="logs">
                       <thead>
                         <tr>
-                          {presetFor(activeType).map((col) => (
+                          {visibleCols.map((col) => (
                             <th
                               key={col.key}
                               style={col.width ? { width: col.width } : undefined}
@@ -553,11 +679,10 @@ export function App() {
                       <tbody>
                         {visibleRows.map((row) => {
                           const type = (row.log_type as LogTypeOrUnknown) ?? activeType;
-                          const cols = presetFor(activeType);
                           const id = String(row.id);
                           return (
                             <tr key={id} className={selected && String(selected.id) === id ? "selected" : ""} onClick={() => setSelected(row)}>
-                              {cols.map((col) => {
+                              {visibleCols.map((col) => {
                                 const value = listValue(type === "unknown" ? "system" : type as LogType, row as unknown as CanonicalRow, col.key);
                                 if (col.key === "act" || col.key === "result" || col.key === "severity") {
                                   const tone = col.key === "act" ? String(row.act_tone ?? "neutral") : value === "실패" || value === "오류" ? "danger" : value === "성공" ? "ok" : "neutral";
@@ -613,7 +738,17 @@ export function App() {
                   return (
                     <div className="kv" key={key}>
                       <span title={glossaryFor(DETAIL_LABELS[key] ?? key)}>{DETAIL_LABELS[key] ?? key}</span>
-                      <b><Highlight text={value} query={debouncedSearch} /></b>
+                      <b>
+                        <Highlight text={value} query={debouncedSearch} />
+                        <button
+                          type="button"
+                          className="copy-btn"
+                          title="복사"
+                          onClick={() => void copyValue(value, key)}
+                        >
+                          {copied === key ? "복사됨" : "복사"}
+                        </button>
+                      </b>
                     </div>
                   );
                 })}
@@ -623,7 +758,16 @@ export function App() {
                     {Object.entries(rawFields).map(([k, v]) => (
                       <div className="kv" key={k}>
                         <span>{k}</span>
-                        <b>{String(v)}</b>
+                        <b>
+                          {String(v)}
+                          <button
+                            type="button"
+                            className="copy-btn"
+                            onClick={() => void copyValue(String(v), `raw-${k}`)}
+                          >
+                            {copied === `raw-${k}` ? "복사됨" : "복사"}
+                          </button>
+                        </b>
                       </div>
                     ))}
                   </>
@@ -673,7 +817,21 @@ export function App() {
       )}
 
       {busy && (
-        <div className="modal-back"><div className="modal"><h2>{busy}</h2></div></div>
+        <div className="modal-back">
+          <div className="modal">
+            <h2>{busy}</h2>
+            <p className="hint">대용량 파일은 잠시 걸릴 수 있습니다.</p>
+            <div className="preview-actions">
+              <button
+                className="btn"
+                type="button"
+                onClick={() => abortRef.current?.abort()}
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <input ref={fileInput} type="file" multiple accept=".adb,.csv,text/csv" hidden

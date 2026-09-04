@@ -73,6 +73,23 @@ const CANONICAL_COLUMNS = [
 const LIST_COLUMNS = CANONICAL_COLUMNS.filter((c) => c !== "raw_json" && c !== "search_text");
 const LIST_SQL = `id, ${LIST_COLUMNS.join(",")}`;
 
+export interface IngestOptions {
+  signal?: AbortSignal;
+  onBatch?: (inserted: number) => void;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    const err = new Error("가져오기가 취소되었습니다.");
+    err.name = "AbortError";
+    throw err;
+  }
+}
+
+function yieldTick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 function ddl(): string {
   const cols = CANONICAL_COLUMNS.map((c) => {
     if (c === "ltime" || c === "row_idx") return `${c} INTEGER`;
@@ -111,6 +128,7 @@ export class Workspace {
   private distinctCache = new Map<string, string[]>();
   private timeRangeCache = new Map<string, { min: number | null; max: number | null }>();
   private statsCache: { files: number; rows: number; bytes: number } | null = null;
+  private committedDedup = new Set<string>();
 
   private constructor(db: Database) {
     this.db = db;
@@ -154,28 +172,33 @@ export class Workspace {
   }
 
   private insertRows(rows: CanonicalRow[]): number {
-    if (rows.length === 0) return 0;
+    const keep = rows.filter((row) => !this.committedDedup.has(row.dedup_key));
+    if (keep.length === 0) return 0;
     const placeholders = CANONICAL_COLUMNS.map(() => "?").join(",");
     const sql = `INSERT INTO logs(${CANONICAL_COLUMNS.join(",")}) VALUES(${placeholders})`;
     this.db.run("BEGIN");
     try {
       const stmt = this.db.prepare(sql);
-      for (const row of rows) {
+      for (const row of keep) {
         stmt.run(rowParams(row));
       }
       stmt.free();
       this.db.run("COMMIT");
       this.invalidateCache();
-      return rows.length;
+      return keep.length;
     } catch (err) {
       this.db.run("ROLLBACK");
       throw err;
     }
   }
 
-  async ingest(file: ClassifiedFile): Promise<SourceMeta> {
-    if (file.format === "csv") return this.ingestCsv(file);
-    if (file.format === "adb") return this.ingestAdb(file);
+  private commitDedupKeys(keys: string[]): void {
+    for (const key of keys) this.committedDedup.add(key);
+  }
+
+  async ingest(file: ClassifiedFile, opts?: IngestOptions): Promise<SourceMeta> {
+    if (file.format === "csv") return this.ingestCsv(file, opts);
+    if (file.format === "adb") return this.ingestAdb(file, opts);
     const meta: SourceMeta = {
       id: file.id,
       fileName: file.name,
@@ -191,19 +214,26 @@ export class Workspace {
     return meta;
   }
 
-  private ingestCsv(file: ClassifiedFile): SourceMeta {
+  private async ingestCsv(file: ClassifiedFile, opts?: IngestOptions): Promise<SourceMeta> {
     const parsed = parseCsv(file.bytes);
     const logType = file.logType;
     let inserted = 0;
     const batch: CanonicalRow[] = [];
-    parsed.rows.forEach((raw, idx) => {
-      batch.push(ingestCsvRow(logType, file.id, idx, raw));
+    const seenInFile: string[] = [];
+    for (let idx = 0; idx < parsed.rows.length; idx += 1) {
+      throwIfAborted(opts?.signal);
+      const row = ingestCsvRow(logType, file.id, idx, parsed.rows[idx]!);
+      batch.push(row);
+      seenInFile.push(row.dedup_key);
       if (batch.length >= 800) {
         inserted += this.insertRows(batch);
+        opts?.onBatch?.(inserted);
         batch.length = 0;
+        await yieldTick();
       }
-    });
+    }
     if (batch.length) inserted += this.insertRows(batch);
+    this.commitDedupKeys(seenInFile);
     if (logType === "unknown") this.genericFlags.add(file.id);
     const meta: SourceMeta = {
       id: file.id,
@@ -220,7 +250,7 @@ export class Workspace {
     return meta;
   }
 
-  private async ingestAdb(file: ClassifiedFile): Promise<SourceMeta> {
+  private async ingestAdb(file: ClassifiedFile, opts?: IngestOptions): Promise<SourceMeta> {
     let adb;
     try {
       adb = await openAdb(file.bytes);
@@ -270,16 +300,23 @@ export class Workspace {
         }
         resolvedType = tables.length === 1 ? logType : resolvedType;
         const batch: CanonicalRow[] = [];
+        const seenInFile: string[] = [];
         let idx = 0;
         for (const raw of iterateRows(adb, table)) {
-          batch.push(ingestAdbRow(logType, file.id, idx, raw));
+          throwIfAborted(opts?.signal);
+          const row = ingestAdbRow(logType, file.id, idx, raw);
+          batch.push(row);
+          seenInFile.push(row.dedup_key);
           idx += 1;
           if (batch.length >= 800) {
             total += this.insertRows(batch);
+            opts?.onBatch?.(total);
             batch.length = 0;
+            await yieldTick();
           }
         }
         if (batch.length) total += this.insertRows(batch);
+        this.commitDedupKeys(seenInFile);
         if (fromTable !== "unknown") resolvedType = fromTable;
       }
       const meta: SourceMeta = {

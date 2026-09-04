@@ -124,18 +124,25 @@ export function unknownCode(value: unknown): string {
 
 export function parseAuthResult(message: string): string {
   const s = message.toLowerCase();
-  if (s.includes("login") && (s.includes("success") || s.includes("ok"))) {
+  if (
+    (s.includes("login") && (s.includes("success") || s.includes("ok"))) ||
+    s.includes("로그인 성공") ||
+    (s.includes("로그인") && s.includes("성공"))
+  ) {
     return "성공";
   }
   if (
     s.includes("fail") ||
     s.includes("denied") ||
     s.includes("invalid") ||
-    s.includes("error")
+    s.includes("error") ||
+    s.includes("실패") ||
+    s.includes("거부") ||
+    s.includes("거절")
   ) {
     return "실패";
   }
-  if (s.includes("logout")) return "로그아웃";
-  if (s.includes("timeout")) return "타임아웃";
+  if (s.includes("logout") || s.includes("로그아웃")) return "로그아웃";
+  if (s.includes("timeout") || s.includes("타임아웃") || s.includes("시간 초과")) return "타임아웃";
   return dashIfEmpty(message) === "-" ? "-" : "기타";
 }

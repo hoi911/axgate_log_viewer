@@ -83,14 +83,34 @@ export interface QueryPage {
   elapsedMs: number;
 }
 
+export interface FilterPreset {
+  name: string;
+  filters: QueryFilters;
+}
+
+export interface RecentWorkspace {
+  dir: string;
+  name: string;
+  lastOpened: number;
+  fileCount?: number;
+}
+
 export interface Settings {
   theme: ThemeMode;
   density: Density;
   pageSize: number;
+  sidebarCollapsed: boolean;
+  hiddenColumns: Partial<Record<LogType, string[]>>;
+  extraColumns: Partial<Record<LogType, string[]>>;
+  filterPresets: Partial<Record<LogType, FilterPreset[]>>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   density: "comfortable",
   pageSize: 100,
+  sidebarCollapsed: false,
+  hiddenColumns: {},
+  extraColumns: {},
+  filterPresets: {},
 };

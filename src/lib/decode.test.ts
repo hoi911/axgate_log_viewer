@@ -73,5 +73,10 @@ describe("code mappings", () => {
     expect(parseAuthResult("login: success (local)")).toBe("성공");
     expect(parseAuthResult("logout: timeout")).toBe("로그아웃");
     expect(parseAuthResult("authentication failed")).toBe("실패");
+    expect(parseAuthResult("로그인 성공 (로컬)")).toBe("성공");
+    expect(parseAuthResult("인증 실패")).toBe("실패");
+    expect(parseAuthResult("접속이 거부되었습니다")).toBe("실패");
+    expect(parseAuthResult("사용자 로그아웃")).toBe("로그아웃");
+    expect(parseAuthResult("세션 타임아웃")).toBe("타임아웃");
   });
 });

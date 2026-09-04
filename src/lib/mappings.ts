@@ -157,9 +157,49 @@ export const SEARCH_PRESET: ColumnPreset[] = [
   { key: "msg", label: "메시지" },
 ];
 
+export const EXTRA_COLUMNS: Record<LogType, ColumnPreset[]> = {
+  session: [
+    { key: "from_zone", label: "출발지 Zone", width: "110px" },
+    { key: "to_zone", label: "목적지 Zone", width: "110px" },
+    { key: "sent_bytes", label: "발신 바이트", width: "100px" },
+    { key: "rcv_bytes", label: "수신 바이트", width: "100px" },
+    { key: "nat_src", label: "NAT 출발지" },
+    { key: "nat_dst", label: "NAT 목적지" },
+  ],
+  audit: [
+    { key: "device", label: "장비", width: "120px" },
+  ],
+  uauth: [
+    { key: "grp", label: "그룹", width: "120px" },
+    { key: "mac", label: "MAC", width: "140px" },
+  ],
+  system: [
+    { key: "facility", label: "Facility", width: "100px" },
+    { key: "pid", label: "PID", width: "80px" },
+  ],
+  ipsec: [
+    { key: "spi", label: "SPI", width: "120px" },
+    { key: "vpn_type", label: "VPN 종류", width: "100px" },
+  ],
+  ssl: [
+    { key: "uname", label: "사용자", width: "120px" },
+  ],
+};
+
 export function presetFor(type: LogTypeOrUnknown): ColumnPreset[] {
   if (type === "unknown") return UNKNOWN_PRESET;
   return COLUMN_PRESETS[type];
+}
+
+export function columnsFor(
+  type: LogTypeOrUnknown,
+  hidden: string[] = [],
+  extra: string[] = [],
+): ColumnPreset[] {
+  const base = presetFor(type).filter((col) => !hidden.includes(col.key));
+  if (type === "unknown") return base;
+  const extras = EXTRA_COLUMNS[type].filter((col) => extra.includes(col.key));
+  return [...base, ...extras];
 }
 
 export const DETAIL_LABELS: Record<string, string> = {

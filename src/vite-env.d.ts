@@ -17,6 +17,16 @@ interface AxgateDesktopApi {
     path: string;
     bytes: Uint8Array;
   }[] | null>;
+  openRecent: (dir: string) => Promise<{
+    dir?: string;
+    files?: { name: string; path: string; bytes: Uint8Array }[];
+    missing?: boolean;
+  } | null>;
+  listRecent: () => Promise<{ dir: string; name: string; lastOpened: number; fileCount?: number }[]>;
+  onOpenFiles: (
+    handler: (files: { name: string; path: string; bytes: Uint8Array }[]) => void,
+  ) => () => void;
+  rendererReady: () => Promise<boolean>;
   saveFile: (opts: {
     defaultName: string;
     data: Uint8Array;

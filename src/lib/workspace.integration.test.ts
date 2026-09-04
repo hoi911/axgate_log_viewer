@@ -111,4 +111,18 @@ describe("workspace ingest of sample files", () => {
     expect(logout.some((g) => g.logType === "audit" && g.count > 0)).toBe(true);
     ws.close();
   });
+
+  it("skips duplicate CSV rows that overlap across files", async () => {
+    const ws = await Workspace.create();
+    const file = {
+      name: "Audit.csv",
+      bytes: load("Audit.csv"),
+    };
+    const first = await ws.ingest(classifyOpenedFile(file));
+    const second = await ws.ingest(classifyOpenedFile({ ...file, name: "Audit (1).csv" }));
+    expect(first.rowCount).toBeGreaterThan(0);
+    expect(second.rowCount).toBe(0);
+    expect(ws.counts().audit).toBe(first.rowCount);
+    ws.close();
+  });
 });

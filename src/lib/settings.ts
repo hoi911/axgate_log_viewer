@@ -11,6 +11,10 @@ export function loadSettings(): Settings {
       theme: parsed.theme ?? DEFAULT_SETTINGS.theme,
       density: parsed.density ?? DEFAULT_SETTINGS.density,
       pageSize: parsed.pageSize === 50 || parsed.pageSize === 200 ? parsed.pageSize : 100,
+      sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
+      hiddenColumns: parsed.hiddenColumns ?? {},
+      extraColumns: parsed.extraColumns ?? {},
+      filterPresets: parsed.filterPresets ?? {},
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

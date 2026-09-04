@@ -5,6 +5,7 @@ import {
   parseAuthResult,
   parseDateTimeToEpoch,
 } from "./decode";
+import { hashString } from "./hash";
 import { mapAct, mapProtocol, mapSeverity } from "./mappings";
 import type { LogType, LogTypeOrUnknown } from "./types";
 
@@ -202,18 +203,7 @@ function finish(row: CanonicalRow): CanonicalRow {
     .filter((v) => v && v !== "-")
     .join(" ")
     .toLowerCase();
-  row.dedup_key = [
-    row.log_type,
-    row.ltime ?? row.time,
-    row.src,
-    row.dst,
-    row.src_port,
-    row.dst_port,
-    row.act,
-    row.msg,
-    row.uname,
-    row.program,
-  ].join("|");
+  row.dedup_key = hashString(`${row.log_type}\n${row.raw_json}`);
   return row;
 }
 

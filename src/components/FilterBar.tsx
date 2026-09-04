@@ -1,7 +1,7 @@
 import { datetimeLocalToEpoch, epochToDatetimeLocal } from "../lib/bytes";
 import { filterChips, filtersFor, type FilterControl } from "../lib/filters";
 import { glossaryFor } from "../lib/glossary";
-import type { LogTypeOrUnknown, QueryFilters } from "../lib/types";
+import type { FilterPreset, LogTypeOrUnknown, QueryFilters } from "../lib/types";
 import type { DistinctColumn } from "../lib/filters";
 
 interface Props {
@@ -9,13 +9,24 @@ interface Props {
   filters: QueryFilters;
   options: (column: DistinctColumn) => string[];
   onChange: (next: QueryFilters) => void;
+  presets?: FilterPreset[];
+  onSavePreset?: (name: string) => void;
+  onLoadPreset?: (name: string) => void;
 }
 
 function patch(filters: QueryFilters, key: keyof QueryFilters, value: string): QueryFilters {
   return { ...filters, [key]: value || null };
 }
 
-export function FilterBar({ logType, filters, options, onChange }: Props) {
+export function FilterBar({
+  logType,
+  filters,
+  options,
+  onChange,
+  presets = [],
+  onSavePreset,
+  onLoadPreset,
+}: Props) {
   const specs = filtersFor(logType);
   const chips = filterChips(logType, filters);
 
@@ -38,6 +49,34 @@ export function FilterBar({ logType, filters, options, onChange }: Props) {
         >
           필터 초기화
         </button>
+        {onSavePreset && (
+          <button
+            className="btn"
+            type="button"
+            onClick={() => {
+              const name = window.prompt("프리셋 이름");
+              if (name?.trim()) onSavePreset(name.trim());
+            }}
+          >
+            프리셋 저장
+          </button>
+        )}
+        {presets.length > 0 && onLoadPreset && (
+          <label>프리셋
+            <select
+              value=""
+              onChange={(e) => {
+                const name = e.target.value;
+                if (name) onLoadPreset(name);
+              }}
+            >
+              <option value="">불러오기</option>
+              {presets.map((p) => (
+                <option key={p.name} value={p.name}>{p.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       {chips.length > 0 && (
         <div className="chips" aria-label="적용된 필터">

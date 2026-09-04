@@ -17,7 +17,10 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const isDev = !app.isPackaged;
+const MAX_SCAN_FILES = 200;
+const MAX_RECENTS = 8;
 let mainWindow = null;
+let pendingOpenPaths = [];
 
 function distDir() {
   return path.resolve(__dirname, "..", "dist");
@@ -33,24 +36,50 @@ function fileFromAppUrl(requestUrl) {
   return filePath;
 }
 
-function scanDir(dir, acc = []) {
-  let entries = [];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return acc;
-  }
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name.startsWith(".")) continue;
-      scanDir(full, acc);
-      continue;
+function isLogFile(name) {
+  const lower = name.toLowerCase();
+  return lower.endsWith(".adb") || lower.endsWith(".csv");
+}
+
+function collectLogFiles(dir, recursive, max) {
+  const acc = [];
+  const walk = (current) => {
+    if (acc.length >= max) return;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
     }
-    const lower = entry.name.toLowerCase();
-    if (lower.endsWith(".adb") || lower.endsWith(".csv")) acc.push(full);
-  }
+    const dirs = [];
+    for (const entry of entries) {
+      if (acc.length >= max) return;
+      if (entry.name.startsWith(".")) continue;
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        dirs.push(full);
+        continue;
+      }
+      if (isLogFile(entry.name)) acc.push(full);
+    }
+    if (recursive) {
+      for (const child of dirs) {
+        if (acc.length >= max) return;
+        walk(child);
+      }
+    }
+  };
+  walk(dir);
   return acc;
+}
+
+function scanLogPaths(dir) {
+  const top = collectLogFiles(dir, false, MAX_SCAN_FILES + 1);
+  if (top.length > 0) {
+    return { paths: top.slice(0, MAX_SCAN_FILES), truncated: top.length > MAX_SCAN_FILES, recursive: false };
+  }
+  const rec = collectLogFiles(dir, true, MAX_SCAN_FILES + 1);
+  return { paths: rec.slice(0, MAX_SCAN_FILES), truncated: rec.length > MAX_SCAN_FILES, recursive: true };
 }
 
 function readPayload(filePath) {
@@ -60,6 +89,37 @@ function readPayload(filePath) {
     path: filePath,
     bytes: buf,
   };
+}
+
+function recentsPath() {
+  return path.join(app.getPath("userData"), "recents.json");
+}
+
+function loadRecents() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(recentsPath(), "utf8"));
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecents(list) {
+  fs.mkdirSync(app.getPath("userData"), { recursive: true });
+  fs.writeFileSync(recentsPath(), JSON.stringify(list.slice(0, MAX_RECENTS), null, 2));
+}
+
+function rememberDir(dir, fileCount) {
+  if (!dir) return;
+  const next = [
+    { dir, name: path.basename(dir), lastOpened: Date.now(), fileCount },
+    ...loadRecents().filter((item) => item.dir !== dir),
+  ];
+  saveRecents(next);
+}
+
+function extractAdbArgs(argv) {
+  return (argv || []).filter((arg) => typeof arg === "string" && arg.toLowerCase().endsWith(".adb") && fs.existsSync(arg));
 }
 
 function createWindow() {
@@ -79,7 +139,7 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
 
@@ -104,17 +164,50 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
-  protocol.handle("app", (request) => {
-    const filePath = fileFromAppUrl(request.url);
-    if (!filePath) return new Response("Forbidden", { status: 403 });
-    return net.fetch(pathToFileURL(filePath).toString());
+function sendOpenFiles(files) {
+  if (!mainWindow || files.length === 0) return;
+  mainWindow.webContents.send("open-files", files);
+}
+
+function flushPendingOpens() {
+  if (!mainWindow || pendingOpenPaths.length === 0) return;
+  const paths = pendingOpenPaths.splice(0, pendingOpenPaths.length);
+  sendOpenFiles(paths.map(readPayload));
+}
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, argv) => {
+    const files = extractAdbArgs(argv);
+    if (files.length) pendingOpenPaths.push(...files);
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      flushPendingOpens();
+    }
   });
-  createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+
+  app.on("open-file", (event, filePath) => {
+    event.preventDefault();
+    pendingOpenPaths.push(filePath);
+    if (mainWindow) flushPendingOpens();
   });
-});
+
+  app.whenReady().then(() => {
+    protocol.handle("app", (request) => {
+      const filePath = fileFromAppUrl(request.url);
+      if (!filePath) return new Response("Forbidden", { status: 403 });
+      return net.fetch(pathToFileURL(filePath).toString());
+    });
+    pendingOpenPaths.push(...extractAdbArgs(process.argv));
+    createWindow();
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -126,8 +219,40 @@ ipcMain.handle("open-folder", async () => {
   });
   if (result.canceled || !result.filePaths[0]) return null;
   const dir = result.filePaths[0];
-  const files = scanDir(dir).map(readPayload);
+  const scanned = scanLogPaths(dir);
+  if (scanned.paths.length === 0) return { dir, files: [] };
+  if (scanned.truncated || scanned.paths.length >= 80) {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: "warning",
+      buttons: ["가져오기", "취소"],
+      defaultId: scanned.truncated ? 1 : 0,
+      cancelId: 1,
+      title: "많은 파일",
+      message: `${scanned.truncated ? `${MAX_SCAN_FILES}개 이상` : `${scanned.paths.length}개`}의 로그 파일을 찾았습니다.`,
+      detail: scanned.recursive
+        ? "하위 폴더까지 검색했습니다. 상위 폴더를 연 것 같으면 취소를 누르세요."
+        : "계속하면 파일을 모두 메모리로 읽습니다.",
+    });
+    if (choice !== 0) return null;
+  }
+  const files = scanned.paths.map(readPayload);
+  rememberDir(dir, files.length);
   return { dir, files };
+});
+
+ipcMain.handle("open-recent", async (_event, dir) => {
+  if (!dir || !fs.existsSync(dir)) return { missing: true, dir };
+  const scanned = scanLogPaths(dir);
+  const files = scanned.paths.map(readPayload);
+  rememberDir(dir, files.length);
+  return { dir, files };
+});
+
+ipcMain.handle("list-recent", () => loadRecents());
+
+ipcMain.handle("renderer-ready", () => {
+  flushPendingOpens();
+  return true;
 });
 
 ipcMain.handle("open-files", async () => {

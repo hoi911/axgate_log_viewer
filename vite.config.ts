@@ -8,8 +8,10 @@ export default defineConfig({
     react(),
     {
       name: "electron-no-crossorigin",
-      transformIndexHtml(html) {
-        return html.replace(/ crossorigin/g, "");
+      transformIndexHtml(html, ctx) {
+        let out = html.replace(/ crossorigin/g, "");
+        if (!ctx.server) out = out.replace(" 'unsafe-eval'", "");
+        return out;
       },
     },
     {
